@@ -28,13 +28,13 @@ folderPath = 'header'
 myList = sorted(os.listdir(folderPath))  # Sort the list to maintain order
 overlayList = [cv2.imread(f"{folderPath}/{imPath}") for imPath in myList]
 
-folderPath = 'right_sidebar'
+folderPath = 'guide'
 myList = sorted(os.listdir(folderPath))  # Sort the list to maintain order
 overlayLists = [cv2.imread(f"{folderPath}/{imPath}") for imPath in myList]
 
 # Set the first image as the header
 header = overlayList[0]
-right_sidebar = overlayLists[0]
+guide = overlayLists[0]
 
 # Default drawing color
 drawColor = (255, 0, 255)
