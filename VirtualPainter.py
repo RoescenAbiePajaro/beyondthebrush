@@ -1,11 +1,10 @@
-# VirtualPainter.py
 import cv2
 import numpy as np
 import os
 import time
 import HandTrackingModule as htm
 from tkinter import *
-from PIL import Image, ImageTk  # Needed for handling the icon image
+from PIL import Image, ImageTk
 
 # Create a hidden tkinter window for the icon
 root = Tk()
@@ -19,22 +18,31 @@ except Exception as e:
     print(f"Could not set icon: {e}")
 
 # Variables
-brushSize = 10  # Reduced brush size for smoother drawing
+brushSize = 10
 eraserSize = 50
 fps = 60
 time_per_frame = 2.0 / fps
 
+# Load header images
 folderPath = 'header'
-myList = sorted(os.listdir(folderPath))  # Sort the list to maintain order
+myList = sorted(os.listdir(folderPath))
 overlayList = [cv2.imread(f"{folderPath}/{imPath}") for imPath in myList]
 
+# Load guide images (resized to 1280x595)
 folderPath = 'guide'
-myList = sorted(os.listdir(folderPath))  # Sort the list to maintain order
-overlayLists = [cv2.imread(f"{folderPath}/{imPath}") for imPath in myList]
+myList = sorted(os.listdir(folderPath))
+guideList = []
+for imPath in myList:
+    img = cv2.imread(f"{folderPath}/{imPath}")
+    if img is not None:
+        # Resize guide images to fit below header (1280x595)
+        img = cv2.resize(img, (1280, 595))
+        guideList.append(img)
 
-# Set the first image as the header
+# Default images
 header = overlayList[0]
-guide = overlayLists[0]
+current_guide = None  # Initially no guide shown
+show_guide = False    # Track guide visibility state
 
 # Default drawing color
 drawColor = (255, 0, 255)
@@ -57,26 +65,22 @@ imgCanvas = np.zeros((720, 1280, 3), np.uint8)
 undoStack = []
 redoStack = []
 
-
 # Function to show transient notification
 def show_transient_notification(message, duration=1000):
     notification = Toplevel(root)
-    notification.wm_overrideredirect(True)  # Remove window decorations
+    notification.wm_overrideredirect(True)
     notification.wm_geometry("+%d+%d" % (root.winfo_screenwidth() // 2 - 100, root.winfo_screenheight() // 2 - 50))
-
     Label(notification, text=message, font=('Helvetica', 12), bg='lightyellow', padx=20, pady=10).pack()
-
-    # Make the window disappear after duration milliseconds
     notification.after(duration, notification.destroy)
-
 
 # Function to save the canvas
 def save_canvas():
-    save_path = os.path.join(os.path.expanduser("~"), "Pictures", "saved_painting.png")
+    import time
+    timestamp = time.strftime("%Y%m%d_%H%M%S")
+    save_path = os.path.join(os.path.expanduser("~"), "Pictures", f"saved_painting_{timestamp}.png")
     cv2.imwrite(save_path, imgCanvas)
     print(f"Canvas Saved at {save_path}")
     show_transient_notification(f"Saved to:\n{save_path}")
-
 
 # Function to interpolate points
 def interpolate_points(x1, y1, x2, y2, num_points=10):
@@ -88,6 +92,50 @@ def interpolate_points(x1, y1, x2, y2, num_points=10):
     return points
 
 
+# Remove the duplicate function and keep only this improved version:
+def show_transient_notification(message, duration=1000, is_error=False):
+    notification = Toplevel(root)
+    notification.wm_overrideredirect(True)
+
+    # Calculate position to be centered on screen (not just drawing area)
+    screen_width = root.winfo_screenwidth()
+    screen_height = root.winfo_screenheight()
+
+    # Notification will be 250px wide and auto-height
+    notif_width = 250
+    notification.wm_geometry(f"+{(screen_width - notif_width) // 2}+{(screen_height - 100) // 2}")
+
+    # Style based on message type
+    bg_color = 'lightyellow'
+    if is_error:
+        bg_color = '#ffdddd'  # light red for errors
+    elif "selected" in message.lower():
+        bg_color = '#ddffdd'  # light green for selections
+
+    # Create frame for better centering control
+    frame = Frame(notification, bg=bg_color, padx=10, pady=10)
+    frame.pack(expand=True, fill=BOTH)
+
+    # Create notification label with improved centering
+    label = Label(
+        frame,
+        text=message,
+        font=('Helvetica', 12, 'bold'),
+        bg=bg_color,
+        fg='#333333',
+        padx=10,
+        pady=10,
+        wraplength=notif_width - 40,  # Account for padding
+        justify=CENTER,
+        anchor=CENTER  # This ensures text is centered within the label
+    )
+    label.pack(expand=True, fill=BOTH)
+
+    # Add a subtle border
+    notification.config(bd=1, relief='solid')
+
+    # Auto-destroy after duration
+    notification.after(duration, notification.destroy)
 # Main Loop
 while True:
     start_time = time.time()
@@ -117,31 +165,37 @@ while True:
                 if 0 < x1 < 128:  # Save
                     header = overlayList[1]
                     save_canvas()
+                    show_guide = False
 
                 elif 128 < x1 < 256:  # Pink
                     header = overlayList[2]
                     drawColor = (255, 0, 255)  # Pink
                     show_transient_notification("Pink brush selected")
+                    show_guide = False
 
                 elif 256 < x1 < 384:  # Blue
                     header = overlayList[3]
                     drawColor = (255, 0, 0)  # Blue
                     show_transient_notification("Blue brush selected")
+                    show_guide = False
 
                 elif 384 < x1 < 512:  # Green
                     header = overlayList[4]
                     drawColor = (0, 255, 0)  # Green
                     show_transient_notification("Green brush selected")
+                    show_guide = False
 
                 elif 512 < x1 < 640:  # Yellow
                     header = overlayList[5]
                     drawColor = (0, 255, 255)  # Yellow
                     show_transient_notification("Yellow brush selected")
+                    show_guide = False
 
                 elif 640 < x1 < 768:  # Eraser
                     header = overlayList[6]
                     drawColor = (0, 0, 0)  # Eraser
                     show_transient_notification("Eraser selected")
+                    show_guide = False
 
                 elif 768 < x1 < 896:  # Undo
                     header = overlayList[7]
@@ -151,6 +205,7 @@ while True:
                         show_transient_notification("Undo")
                     else:
                         show_transient_notification("Nothing to undo")
+                    show_guide = False
 
                 elif 896 < x1 < 1024:  # Redo
                     header = overlayList[8]
@@ -160,16 +215,23 @@ while True:
                         show_transient_notification("Redo")
                     else:
                         show_transient_notification("Nothing to redo")
+                    show_guide = False
 
                 elif 1024 < x1 < 1152:  # Guide
                     header = overlayList[9]
                     show_transient_notification("Guide selected")
+                    # Toggle guide display
+                    show_guide = True  # Always show guide when selected
+                    current_guide = guideList[0]  # Show first guide image
+
+            # And ensure all other selections set show_guide to False (they already do in your code)
+
 
             # Show selection rectangle
             cv2.rectangle(img, (x1, y1 - 25), (x2, y2 + 25), drawColor, cv2.FILLED)
 
-        # 5. Drawing Mode - Index Finger Up
-        if fingers[1] and not fingers[2]:
+        # 5. Drawing Mode - Index Finger Up (only if guide is not shown)
+        if fingers[1] and not fingers[2] and not show_guide:
             cv2.circle(img, (x1, y1), 15, drawColor, cv2.FILLED)
 
             if xp == 0 and yp == 0:
@@ -194,8 +256,6 @@ while True:
             # No fingers up - reset points
             xp, yp = 0, 0
 
-
-
     # 7. Convert Canvas to Grayscale and Invert
     imgGray = cv2.cvtColor(imgCanvas, cv2.COLOR_BGR2GRAY)
     _, imgInv = cv2.threshold(imgGray, 50, 255, cv2.THRESH_BINARY_INV)
@@ -206,9 +266,17 @@ while True:
     # 8. Set Header Image
     img[0:125, 0:1280] = header
 
-    # 9. Display the images
+    # 9. Display Guide Image if active
+    if show_guide and current_guide is not None:
+        # Create a composite image that preserves the drawing canvas
+        guide_area = img[125:720, 0:1280].copy()
+        # Blend the guide with the current camera feed (50% opacity)
+        blended_guide = cv2.addWeighted(current_guide, 0.5, guide_area, 0.5, 0)
+        # Put the blended guide back
+        img[125:720, 0:1280] = blended_guide
+
+    # 10. Display the image
     cv2.imshow("Beyond The Brush", img)
-    cv2.imshow("Beyond The Brush Canvas", imgCanvas)
 
     # Maintain 60 FPS
     elapsed_time = time.time() - start_time
