@@ -41,8 +41,14 @@ for imPath in myList:
 
 # Default images
 header = overlayList[0]
+current_guide_index = 0  # Track current guide index
 current_guide = None  # Initially no guide shown
-show_guide = False    # Track guide visibility state
+show_guide = False  # Track guide visibility state
+
+# Swipe detection variables
+swipe_threshold = 50  # Minimum horizontal movement to consider a swipe
+swipe_start_x = None  # To track where swipe started
+swipe_active = False  # To track if swipe is in progress
 
 # Default drawing color
 drawColor = (255, 0, 255)
@@ -65,6 +71,7 @@ imgCanvas = np.zeros((720, 1280, 3), np.uint8)
 undoStack = []
 redoStack = []
 
+
 # Function to show transient notification
 def show_transient_notification(message, duration=1000):
     notification = Toplevel(root)
@@ -72,6 +79,7 @@ def show_transient_notification(message, duration=1000):
     notification.wm_geometry("+%d+%d" % (root.winfo_screenwidth() // 2 - 100, root.winfo_screenheight() // 2 - 50))
     Label(notification, text=message, font=('Helvetica', 12), bg='lightyellow', padx=20, pady=10).pack()
     notification.after(duration, notification.destroy)
+
 
 # Function to save the canvas
 def save_canvas():
@@ -81,6 +89,7 @@ def save_canvas():
     cv2.imwrite(save_path, imgCanvas)
     print(f"Canvas Saved at {save_path}")
     show_transient_notification(f"Saved to:\n{save_path}")
+
 
 # Function to interpolate points
 def interpolate_points(x1, y1, x2, y2, num_points=10):
@@ -92,7 +101,7 @@ def interpolate_points(x1, y1, x2, y2, num_points=10):
     return points
 
 
-# Remove the duplicate function and keep only this improved version:
+# Improved notification function
 def show_transient_notification(message, duration=1000, is_error=False):
     notification = Toplevel(root)
     notification.wm_overrideredirect(True)
@@ -136,6 +145,8 @@ def show_transient_notification(message, duration=1000, is_error=False):
 
     # Auto-destroy after duration
     notification.after(duration, notification.destroy)
+
+
 # Main Loop
 while True:
     start_time = time.time()
@@ -159,6 +170,7 @@ while True:
         # 4. Selection Mode - Two Fingers Up
         if fingers[1] and fingers[2]:
             xp, yp = 0, 0  # Reset points
+            swipe_start_x = None  # Reset swipe tracking when in selection mode
 
             # Detecting selection based on X coordinate
             if y1 < 125:  # Ensure the selection is within the header area
@@ -222,16 +234,43 @@ while True:
                     show_transient_notification("Guide selected")
                     # Toggle guide display
                     show_guide = True  # Always show guide when selected
-                    current_guide = guideList[0]  # Show first guide image
-
-            # And ensure all other selections set show_guide to False (they already do in your code)
-
+                    current_guide_index = 0  # Reset to first guide
+                    current_guide = guideList[current_guide_index]  # Show first guide image
 
             # Show selection rectangle
             cv2.rectangle(img, (x1, y1 - 25), (x2, y2 + 25), drawColor, cv2.FILLED)
 
-        # 5. Drawing Mode - Index Finger Up (only if guide is not shown)
-        if fingers[1] and not fingers[2] and not show_guide:
+        # 5. Guide Navigation Mode - Single Index Finger (only when guide is shown)
+        elif fingers[1] and not fingers[2] and show_guide:
+            if swipe_start_x is None:
+                # Start tracking swipe
+                swipe_start_x = x1
+                swipe_active = True
+            else:
+                # Calculate horizontal movement
+                delta_x = x1 - swipe_start_x
+
+                # Check if swipe threshold is reached
+                if abs(delta_x) > swipe_threshold and swipe_active:
+                    if delta_x > 0:
+                        # Swipe right - previous guide
+                        current_guide_index = max(0, current_guide_index - 1)
+                        show_transient_notification(f"Guide {current_guide_index + 1}/{len(guideList)}")
+                    else:
+                        # Swipe left - next guide
+                        current_guide_index = min(len(guideList) - 1, current_guide_index + 1)
+                        show_transient_notification(f"Guide {current_guide_index + 1}/{len(guideList)}")
+
+                    # Update current guide
+                    current_guide = guideList[current_guide_index]
+                    swipe_active = False  # Prevent multiple triggers
+
+            # Show index finger position (visual feedback)
+            cv2.circle(img, (x1, y1), 15, (0, 255, 0), cv2.FILLED)
+
+        # 6. Drawing Mode - Index Finger Up (only if guide is not shown)
+        elif fingers[1] and not fingers[2] and not show_guide:
+            swipe_start_x = None  # Reset swipe tracking when drawing
             cv2.circle(img, (x1, y1), 15, drawColor, cv2.FILLED)
 
             if xp == 0 and yp == 0:
@@ -253,8 +292,14 @@ while True:
             redoStack.clear()  # Clear redo stack after a new action
 
         else:
-            # No fingers up - reset points
+            # No fingers up - reset points and swipe tracking
             xp, yp = 0, 0
+            swipe_start_x = None
+            swipe_active = False
+    else:
+        # No hands detected - reset swipe tracking
+        swipe_start_x = None
+        swipe_active = False
 
     # 7. Convert Canvas to Grayscale and Invert
     imgGray = cv2.cvtColor(imgCanvas, cv2.COLOR_BGR2GRAY)
@@ -274,6 +319,12 @@ while True:
         blended_guide = cv2.addWeighted(current_guide, 0.5, guide_area, 0.5, 0)
         # Put the blended guide back
         img[125:720, 0:1280] = blended_guide
+
+        # Display guide navigation instructions
+        cv2.putText(img, "Swipe left/right with index finger to navigate", (50, 150),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        cv2.putText(img, f"Guide {current_guide_index + 1}/{len(guideList)}", (1100, 150),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
     # 10. Display the image
     cv2.imshow("Beyond The Brush", img)
