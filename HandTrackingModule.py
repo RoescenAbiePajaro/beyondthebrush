@@ -1,5 +1,4 @@
 from cvzone import HandTrackingModule
-
 # HandTrackingModule.py
 
 import cv2

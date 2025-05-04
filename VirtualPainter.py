@@ -19,9 +19,9 @@ except Exception as e:
 
 # Variables
 brushSize = 10
-eraserSize = 50
+eraserSize = 100
 fps = 60
-time_per_frame = 2.0 / fps
+time_per_frame = 5.0 / fps
 
 # Load header images
 folderPath = 'header'
@@ -158,6 +158,13 @@ while True:
     # 2. Find Hand Landmarks
     img = detector.findHands(img, draw=False)
     lmList = detector.findPosition(img, draw=False)
+    # Draw black outline (thicker)
+    cv2.putText(img, "Selection Mode - Two Fingers Up", (50, 150),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)  # Black with thickness 4
+
+    # Draw main white text (thinner)
+    cv2.putText(img, "Selection Mode - Two Fingers Up", (50, 150),
+    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)  # White with thickness 2
 
     if len(lmList) != 0:
         # Tip of index and middle fingers
@@ -171,6 +178,8 @@ while True:
         if fingers[1] and fingers[2]:
             xp, yp = 0, 0  # Reset points
             swipe_start_x = None  # Reset swipe tracking when in selection mode
+
+
 
             # Detecting selection based on X coordinate
             if y1 < 125:  # Ensure the selection is within the header area
@@ -236,6 +245,11 @@ while True:
                     show_guide = True  # Always show guide when selected
                     current_guide_index = 0  # Reset to first guide
                     current_guide = guideList[current_guide_index]  # Show first guide image
+
+                elif 1155 < x1 < 1280:
+                    header = overlayList[10]
+                    show_transient_notification("Please Select A Brush and Eraser Size")
+
 
             # Show selection rectangle
             cv2.rectangle(img, (x1, y1 - 25), (x2, y2 + 25), drawColor, cv2.FILLED)
@@ -316,12 +330,12 @@ while True:
         # Create a composite image that preserves the drawing canvas
         guide_area = img[125:720, 0:1280].copy()
         # Blend the guide with the current camera feed (50% opacity)
-        blended_guide = cv2.addWeighted(current_guide, 0.5, guide_area, 0.5, 0)
+        blended_guide = cv2.addWeighted(current_guide, 0.3, guide_area, 0.3, 0)
         # Put the blended guide back
         img[125:720, 0:1280] = blended_guide
 
         # Display guide navigation instructions
-        cv2.putText(img, "Swipe left/right with index finger to navigate", (50, 150),
+        cv2.putText(img, "", (50, 150),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
         cv2.putText(img, f"Guide {current_guide_index + 1}/{len(guideList)}", (1100, 150),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
