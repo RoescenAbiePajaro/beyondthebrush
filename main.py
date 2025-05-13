@@ -69,7 +69,7 @@ xp, yp = 0, 0
 # Create Image Canvas
 imgCanvas = np.zeros((720, 1280, 3), np.uint8)
 
-# Undo/Redo Stack
+# Undo/Redo Stack - now stores both canvas and text state
 undoStack = []
 redoStack = []
 
@@ -77,6 +77,18 @@ redoStack = []
 keyboard_input = KeyboardInput()
 last_time = time.time()
 
+# Function to save current state (both canvas and text)
+def save_state():
+    return {
+        'canvas': imgCanvas.copy(),
+        'text_objects': keyboard_input.text_objects.copy()
+    }
+
+# Function to restore state (both canvas and text)
+def restore_state(state):
+    global imgCanvas
+    imgCanvas = state['canvas'].copy()
+    keyboard_input.text_objects = state['text_objects'].copy()
 
 # Function to show transient notification
 def show_transient_notification(message, duration=1000, is_error=False):
@@ -123,7 +135,6 @@ def show_transient_notification(message, duration=1000, is_error=False):
     # Auto-destroy after duration
     notification.after(duration, notification.destroy)
 
-
 # Function to save the canvas
 def save_canvas():
     import time
@@ -142,13 +153,23 @@ def save_canvas():
             obj['font'],
             obj['scale'],
             obj['color'],
+            obj['thickness'] + 2
+        )
+
+        # Then draw main text
+        cv2.putText(
+            saved_img,
+            obj['text'],
+            obj['position'],
+            obj['font'],
+            obj['scale'],
+            obj['color'],
             obj['thickness']
         )
 
     cv2.imwrite(save_path, saved_img)
     print(f"Canvas Saved at {save_path}")
     show_transient_notification(f"Saved to:\n{save_path}")
-
 
 # Function to interpolate points
 def interpolate_points(x1, y1, x2, y2, num_points=10):
@@ -158,7 +179,6 @@ def interpolate_points(x1, y1, x2, y2, num_points=10):
         y = int(y1 + (y2 - y1) * (i / num_points))
         points.append((x, y))
     return points
-
 
 # Main Loop
 while True:
@@ -237,27 +257,28 @@ while True:
                     # Delete selected text if any
                     keyboard_input.delete_selected()
 
+                # Undo/Redo handling with global state
                 elif 768 < x1 < 896:  # Undo
                     header = overlayList[7]
                     if len(undoStack) > 0:
-                        redoStack.append(imgCanvas.copy())
-                        imgCanvas = undoStack.pop()
+                        redoStack.append(save_state())
+                        state = undoStack.pop()
+                        restore_state(state)
                         show_transient_notification("Undo")
                     else:
                         show_transient_notification("Nothing to undo")
                     show_guide = False
-                    keyboard_input.active = False  # Close keyboard input if open
 
                 elif 896 < x1 < 1024:  # Redo
                     header = overlayList[8]
                     if len(redoStack) > 0:
-                        undoStack.append(imgCanvas.copy())
-                        imgCanvas = redoStack.pop()
+                        undoStack.append(save_state())
+                        state = redoStack.pop()
+                        restore_state(state)
                         show_transient_notification("Redo")
                     else:
                         show_transient_notification("Nothing to redo")
                     show_guide = False
-                    keyboard_input.active = False  # Close keyboard input if open
 
                 elif 1024 < x1 < 1152:  # Guide
                     header = overlayList[9]
@@ -269,10 +290,26 @@ while True:
                     keyboard_input.active = False  # Close keyboard input if open
 
                 elif 1155 < x1 < 1280:
+                    if not keyboard_input.active:
+                        keyboard_input.active = True
+                        show_transient_notification("Keyboard Mode Opened")
                     header = overlayList[10]
-                    keyboard_input.toggle_keyboard_mode()
-                    show_transient_notification("Keyboard mode toggled")
                     show_guide = False
+
+                # Brush/Eraser size controls
+                elif 1155 < x1 < 1280 and y1 > 650:  # Bottom right area
+                    if x1 < 1200:  # Left side - decrease size
+                        if drawColor == (0, 0, 0):  # Eraser
+                            eraserSize = max(10, eraserSize - 5)
+                        else:  # Brush
+                            brushSize = max(1, brushSize - 1)
+                    else:  # Right side - increase size
+                        if drawColor == (0, 0, 0):  # Eraser
+                            eraserSize = min(200, eraserSize + 5)
+                        else:  # Brush
+                            brushSize = min(50, brushSize + 1)
+                    show_transient_notification(
+                        f"{'Eraser' if drawColor == (0, 0, 0) else 'Brush'} size: {eraserSize if drawColor == (0, 0, 0) else brushSize}")
 
             # Show selection rectangle
             cv2.rectangle(img, (x1, y1 - 25), (x2, y2 + 25), drawColor, cv2.FILLED)
@@ -335,7 +372,7 @@ while True:
                 xp, yp = point
 
             # Update undo/redo stacks
-            undoStack.append(imgCanvas.copy())
+            undoStack.append(save_state())
             redoStack.clear()
 
         # TEXT DRAGGING MODE - Two fingers, keyboard active
@@ -376,9 +413,9 @@ while True:
     # Check for keyboard input
     key = cv2.waitKey(1) & 0xFF
     if keyboard_input.process_key_input(key):
-        pass  # Input was handled
-
-
+        # When text is confirmed or changed, save state
+        undoStack.append(save_state())
+        redoStack.clear()
 
     # 8. Convert Canvas to Grayscale and Invert
     imgGray = cv2.cvtColor(imgCanvas, cv2.COLOR_BGR2GRAY)
@@ -397,18 +434,6 @@ while True:
         typing_area[:] = (50, 50, 50)  # Dark gray background
         img[620:720, 0:1280] = cv2.addWeighted(img[620:720, 0:1280], 0.7, typing_area, 0.3, 0)
 
-        # Draw placeholder text when empty
-        if not keyboard_input.text:
-            placeholder_text = "Type here..."
-            text_size = cv2.getTextSize(placeholder_text, cv2.FONT_HERSHEY_SIMPLEX, 0.7, 2)[0]
-            text_x = (img.shape[1] - text_size[0]) // 2
-            text_y = 720 - 30  # 30px from bottom
-
-            # Draw placeholder (semi-transparent)
-            cv2.putText(img, placeholder_text, (text_x, text_y),
-                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (150, 150, 150), 2)
-
-        # Always draw the actual text input (handled by KeyboardInput)
         keyboard_input.draw(img)
 
         # Draw instruction text
@@ -435,6 +460,8 @@ while True:
                     cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
     # 12. Display the image
+    cv2.namedWindow("Beyond The Brush", cv2.WINDOW_GUI_NORMAL)  # Create window with normal GUI (not resizable)
+    cv2.resizeWindow("Beyond The Brush", 1280, 720)  # Set window size to 1280x720
     cv2.imshow("Beyond The Brush", img)
 
     # Maintain 60 FPS

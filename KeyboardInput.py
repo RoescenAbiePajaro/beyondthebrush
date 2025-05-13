@@ -23,6 +23,9 @@ class KeyboardInput:
         self.input_dragging = False
         self.input_drag_offset = (0, 0)
         self.selected_object_index = -1  # Track selected text object
+        self.text_history = []  # To store text object states for undo/redo
+        self.history_index = -1
+
 
     def toggle_keyboard_mode(self):
         self.active = not self.active
@@ -57,6 +60,8 @@ class KeyboardInput:
         if not self.text:
             return
 
+        self.save_state()
+
         self.text_objects.append({
             'text': self.text,
             'position': self.current_input_position,
@@ -67,6 +72,8 @@ class KeyboardInput:
             'selected': False
         })
 
+
+
     def delete_selected(self):
         """Delete the currently selected text object"""
         if self.drag_object_index >= 0:
@@ -74,6 +81,32 @@ class KeyboardInput:
             if 0 <= self.drag_object_index < len(self.text_objects):
                 del self.text_objects[self.drag_object_index]
             self.drag_object_index = -1
+
+    def save_state(self):
+        """Save current text objects state for undo/redo"""
+        # Truncate history if we're not at the end
+        if self.history_index < len(self.text_history) - 1:
+            self.text_history = self.text_history[:self.history_index + 1]
+
+        # Save current state
+        self.text_history.append(list(self.text_objects))
+        self.history_index = len(self.text_history) - 1
+
+    def undo(self):
+        """Undo the last text operation"""
+        if self.history_index > 0:
+            self.history_index -= 1
+            self.text_objects = deque(list(self.text_history[self.history_index]), maxlen=20)
+            return True
+        return False
+
+    def redo(self):
+        """Redo the last undone text operation"""
+        if self.history_index < len(self.text_history) - 1:
+            self.history_index += 1
+            self.text_objects = deque(list(self.text_history[self.history_index]), maxlen=20)
+            return True
+        return False
 
     def update(self, dt):
         if not self.active:
