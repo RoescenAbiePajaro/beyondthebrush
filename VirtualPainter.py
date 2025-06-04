@@ -10,6 +10,7 @@ from KeyboardInput import KeyboardInput
 import tkinter as tk
 from tkinter import messagebox
 import sys
+import atexit
 
 # Create a hidden tkinter window for the icon
 root = Tk()
@@ -207,7 +208,13 @@ def save_canvas():
 
     cv2.imwrite(save_path, saved_img)
     print(f"Canvas Saved at {save_path}")
-    show_transient_notification(f"Saved to:\n{save_path}")
+    
+    # Draw black outline (thicker)
+    cv2.putText(img, f"Saved to: {save_path}", (50, 150),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+    # Draw main white text (thinner)
+    cv2.putText(img, f"Saved to: {save_path}", (50, 150),
+                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
 # Function to interpolate points
 def interpolate_points(x1, y1, x2, y2, num_points=10):
@@ -218,9 +225,21 @@ def interpolate_points(x1, y1, x2, y2, num_points=10):
         points.append((x, y))
     return points
 
+# Add this function before the main loop
+def on_close():
+    global running
+    running = False
+    cap.release()
+    cv2.destroyAllWindows()
+    root.destroy()
+    sys.exit()
+
+# Add this variable before the main loop
+running = True
+
 # Main Loop
 try:
-    while True:
+    while running:
         start_time = time.time()
 
         # 1. Import Image
@@ -234,6 +253,14 @@ try:
         # 2. Find Hand Landmarks
         img = detector.findHands(img, draw=False)
         lmList = detector.findPosition(img, draw=False)
+
+        # Draw black outline (thicker)
+        cv2.putText(img, "Selection Mode - Two Fingers Up", (850, 150),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)  # Black with thickness 4
+
+        # Draw main white text (thinner)
+        cv2.putText(img, "Selection Mode - Two Fingers Up", (850, 150),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)  # White with thickness 2
 
         # Check if lmList is empty or doesn't have enough landmarks before proceeding
         if lmList and len(lmList) >= 21:  # MediaPipe hand tracking has 21 landmarks
@@ -261,7 +288,12 @@ try:
                         if len(overlayList) > 2:
                             header = overlayList[2]
                         drawColor = (255, 0, 255)  # Pink
-                        show_transient_notification("Pink brush selected")
+                        # Draw black outline (thicker)
+                        cv2.putText(img, "Pink brush selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                        # Draw main white text (thinner)
+                        cv2.putText(img, "Pink brush selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         show_guide = False
                         keyboard_input.active = False  # Close keyboard input if open
 
@@ -269,7 +301,12 @@ try:
                         if len(overlayList) > 3:
                             header = overlayList[3]
                         drawColor = (255, 0, 0)  # Blue
-                        show_transient_notification("Blue brush selected")
+                        # Draw black outline (thicker)
+                        cv2.putText(img, "Blue brush selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                        # Draw main white text (thinner)
+                        cv2.putText(img, "Blue brush selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         show_guide = False
                         keyboard_input.active = False  # Close keyboard input if open
 
@@ -277,7 +314,12 @@ try:
                         if len(overlayList) > 4:
                             header = overlayList[4]
                         drawColor = (0, 255, 0)  # Green
-                        show_transient_notification("Green brush selected")
+                        # Draw black outline (thicker)
+                        cv2.putText(img, "Green brush selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                        # Draw main white text (thinner)
+                        cv2.putText(img, "Green brush selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         show_guide = False
                         keyboard_input.active = False  # Close keyboard input if open
 
@@ -285,7 +327,12 @@ try:
                         if len(overlayList) > 5:
                             header = overlayList[5]
                         drawColor = (0, 255, 255)  # Yellow
-                        show_transient_notification("Yellow brush selected")
+                        # Draw black outline (thicker)
+                        cv2.putText(img, "Yellow brush selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                        # Draw main white text (thinner)
+                        cv2.putText(img, "Yellow brush selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         show_guide = False
                         keyboard_input.active = False  # Close keyboard input if open
 
@@ -293,7 +340,12 @@ try:
                         if len(overlayList) > 6:
                             header = overlayList[6]
                         drawColor = (0, 0, 0)  # Eraser
-                        show_transient_notification("Eraser selected")
+                        # Draw black outline (thicker)
+                        cv2.putText(img, "Eraser selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                        # Draw main white text (thinner)
+                        cv2.putText(img, "Eraser selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         show_guide = False
                         keyboard_input.active = False  # Close keyboard input if open
                         # Delete selected text if any
@@ -310,9 +362,19 @@ try:
                             redoStack.append(save_state())
                             state = undoStack.pop()
                             restore_state(state)
-                            show_transient_notification("Undo")
+                            # Draw black outline (thicker)
+                            cv2.putText(img, "Undo", (50, 150),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                            # Draw main white text (thinner)
+                            cv2.putText(img, "Undo", (50, 150),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         else:
-                            show_transient_notification("Nothing to undo")
+                            # Draw black outline (thicker)
+                            cv2.putText(img, "Nothing to undo", (50, 150),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                            # Draw main white text (thinner)
+                            cv2.putText(img, "Nothing to undo", (50, 150),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         show_guide = False
 
                     elif 896 < x1 < 1024:  # Redo
@@ -322,15 +384,30 @@ try:
                             undoStack.append(save_state())
                             state = redoStack.pop()
                             restore_state(state)
-                            show_transient_notification("Redo")
+                            # Draw black outline (thicker)
+                            cv2.putText(img, "Redo", (50, 150),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                            # Draw main white text (thinner)
+                            cv2.putText(img, "Redo", (50, 150),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         else:
-                            show_transient_notification("Nothing to redo")
+                            # Draw black outline (thicker)
+                            cv2.putText(img, "Nothing to redo", (50, 150),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                            # Draw main white text (thinner)
+                            cv2.putText(img, "Nothing to redo", (50, 150),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         show_guide = False
 
                     elif 1024 < x1 < 1152:  # Guide
                         if len(overlayList) > 9:
                             header = overlayList[9]
-                        show_transient_notification("Guide selected")
+                        # Draw black outline (thicker)
+                        cv2.putText(img, "Guide selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                        # Draw main white text (thinner)
+                        cv2.putText(img, "Guide selected", (50, 150),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         # Toggle guide display
                         show_guide = True  # Always show guide when selected
                         if guideList:
@@ -341,7 +418,12 @@ try:
                     elif 1155 < x1 < 1280:
                         if not keyboard_input.active:
                             keyboard_input.active = True
-                            show_transient_notification("Keyboard Mode Opened")
+                            # Draw black outline (thicker)
+                            cv2.putText(img, "Keyboard Mode Opened", (50, 150),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                            # Draw main white text (thinner)
+                            cv2.putText(img, "Keyboard Mode Opened", (50, 150),
+                                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
                         if len(overlayList) > 10:
                             header = overlayList[10]
                         show_guide = False
@@ -358,8 +440,12 @@ try:
                                 eraserSize = min(200, eraserSize + 5)
                             else:  # Brush
                                 brushSize = min(50, brushSize + 1)
-                        show_transient_notification(
-                            f"{'Eraser' if drawColor == (0, 0, 0) else 'Brush'} size: {eraserSize if drawColor == (0, 0, 0) else brushSize}")
+                        # Draw black outline (thicker)
+                        cv2.putText(img, f"{'Eraser' if drawColor == (0, 0, 0) else 'Brush'} size: {eraserSize if drawColor == (0, 0, 0) else brushSize}", 
+                                    (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)
+                        # Draw main white text (thinner)
+                        cv2.putText(img, f"{'Eraser' if drawColor == (0, 0, 0) else 'Brush'} size: {eraserSize if drawColor == (0, 0, 0) else brushSize}", 
+                                    (50, 150), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
                 # Show selection rectangle
                 cv2.rectangle(img, (x1, y1 - 25), (x2, y2 + 25), drawColor, cv2.FILLED)
@@ -471,7 +557,7 @@ try:
                 redoStack.clear()
         except KeyboardInterrupt:
             print("Program terminated by user")
-            break
+            os._exit(0)  # Force exit on KeyboardInterrupt too
 
         # 8. Convert Canvas to Grayscale and Invert
         imgGray = cv2.cvtColor(imgCanvas, cv2.COLOR_BGR2GRAY)
@@ -519,6 +605,8 @@ try:
         # 12. Display the image
         cv2.namedWindow("Beyond The Brush", cv2.WINDOW_GUI_NORMAL)  # Create window with normal GUI (not resizable)
         cv2.resizeWindow("Beyond The Brush", 1280, 720)  # Set window size to 1280x720
+        cv2.setWindowProperty("Beyond The Brush", cv2.WND_PROP_TOPMOST, 1)  # Set window to always be on top
+        cv2.setWindowProperty("Beyond The Brush", cv2.WND_PROP_AUTOSIZE, cv2.WINDOW_NORMAL)  # Set the close callback for OpenCV window
         cv2.imshow("Beyond The Brush", img)
 
         # Maintain 60 FPS
@@ -526,11 +614,17 @@ try:
         if elapsed_time < time_per_frame:
             time.sleep(time_per_frame - elapsed_time)
 
-        # Process Tkinter events
-        root.update()
+        # Process Tkinter events and handle window close
+        try:
+            root.protocol("WM_DELETE_WINDOW", on_close)
+            root.update()
+        except tk.TclError:
+            # Tkinter window was closed
+            break
 
-        # Exit condition
-        if cv2.waitKey(1) & 0xFF == 27:  # ESC key for immediate exit
+        # Check if window exists
+        if cv2.getWindowProperty("Beyond The Brush", cv2.WND_PROP_VISIBLE) < 1:
+            on_close()
             break
 except KeyboardInterrupt:
     print("Program terminated by user")
