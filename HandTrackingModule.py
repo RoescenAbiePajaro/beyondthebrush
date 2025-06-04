@@ -1,10 +1,8 @@
 # HandTrackingModule.py
-
-from cvzone import HandTrackingModule
-# HandTrackingModule.py
 import cv2
 import mediapipe as mp
 import time
+import os
 
 class handDetector:
     def __init__(self, mode=False, maxHands=2, detectionCon=0.5, trackCon=0.5):
@@ -14,6 +12,7 @@ class handDetector:
         self.detectionCon = detectionCon
         self.trackCon = trackCon
 
+        # Initialize MediaPipe components
         self.mpHands = mp.solutions.hands
         self.hands = self.mpHands.Hands(
             static_image_mode=self.mode,
@@ -21,6 +20,7 @@ class handDetector:
             min_detection_confidence=self.detectionCon,
             min_tracking_confidence=self.trackCon
         )
+        
         self.mpDraw = mp.solutions.drawing_utils
         self.tipIds = [4, 8, 12, 16, 20]
 

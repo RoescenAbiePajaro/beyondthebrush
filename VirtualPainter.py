@@ -27,27 +27,53 @@ eraserSize = 100
 fps = 60
 time_per_frame = 5.0 / fps
 
+import os
+import cv2
+
+# Initialize variables
+overlayList = []
+guideList = []
+header = None
+current_guide_index = 0
+current_guide = None
+show_guide = False
+
 # Load header images
 folderPath = 'header'
-myList = sorted(os.listdir(folderPath))
-overlayList = [cv2.imread(f"{folderPath}/{imPath}") for imPath in myList]
+if os.path.exists(folderPath) and os.path.isdir(folderPath):
+    try:
+        myList = sorted(os.listdir(folderPath))
+        overlayList = [cv2.imread(f"{folderPath}/{imPath}") for imPath in myList]
+        # Remove any failed loads
+        overlayList = [img for img in overlayList if img is not None]
 
-# Load guide images (resized to 1280x595)
+        if overlayList:
+            header = overlayList[0]
+        else:
+            print("Warning: No valid header images found")
+    except Exception as e:
+        print(f"Error loading header images: {e}")
+
+# Load guide images
 folderPath = 'guide'
-myList = sorted(os.listdir(folderPath))
-guideList = []
-for imPath in myList:
-    img = cv2.imread(f"{folderPath}/{imPath}")
-    if img is not None:
-        # Resize guide images to fit below header (1280x595)
-        img = cv2.resize(img, (1280, 595))
-        guideList.append(img)
+if os.path.exists(folderPath) and os.path.isdir(folderPath):
+    try:
+        myList = sorted(os.listdir(folderPath))
+        for imPath in myList:
+            img = cv2.imread(f"{folderPath}/{imPath}")
+            if img is not None:
+                try:
+                    # Resize guide images to fit below header (1280x595)
+                    img = cv2.resize(img, (1280, 595))
+                    guideList.append(img)
+                except Exception as e:
+                    print(f"Error resizing guide image {imPath}: {e}")
 
-# Default images
-header = overlayList[0]
-current_guide_index = 0  # Track current guide index
-current_guide = None  # Initially no guide shown
-show_guide = False  # Track guide visibility state
+        if guideList:
+            current_guide_index = 0
+            current_guide = guideList[current_guide_index]
+    except Exception as e:
+        print(f"Error loading guide images: {e}")
 
 # Swipe detection variables
 swipe_threshold = 50  # Minimum horizontal movement to consider a swipe
@@ -184,301 +210,321 @@ def interpolate_points(x1, y1, x2, y2, num_points=10):
     return points
 
 # Main Loop
-while True:
-    start_time = time.time()
+try:
+    while True:
+        start_time = time.time()
 
-    # 1. Import Image
-    success, img = cap.read()
-    img = cv2.flip(img, 1)
+        # 1. Import Image
+        success, img = cap.read()
+        if not success:
+            print("Failed to capture image from camera")
+            continue
 
-    # 2. Find Hand Landmarks
-    img = detector.findHands(img, draw=False)
-    lmList = detector.findPosition(img, draw=False)
+        img = cv2.flip(img, 1)
 
-    # Draw black outline (thicker)
-    cv2.putText(img, "Selection Mode - Two Fingers Up", (50, 150),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 0, 0), 4)  # Black with thickness 4
+        # 2. Find Hand Landmarks
+        img = detector.findHands(img, draw=False)
+        lmList = detector.findPosition(img, draw=False)
 
-    # Draw main white text (thinner)
-    cv2.putText(img, "Selection Mode - Two Fingers Up", (50, 150),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)  # White with thickness 2
+        # Check if lmList is empty or doesn't have enough landmarks before proceeding
+        if lmList and len(lmList) >= 21:  # MediaPipe hand tracking has 21 landmarks
+            # Tip of index and middle fingers
+            x1, y1 = lmList[8][1:]
+            x2, y2 = lmList[12][1:]
 
-    if len(lmList) != 0:
-        # Tip of index and middle fingers
-        x1, y1 = lmList[8][1:]
-        x2, y2 = lmList[12][1:]
+            # 3. Check which fingers are up
+            fingers = detector.fingersUp()
 
-        # 3. Check which fingers are up
-        fingers = detector.fingersUp()
+            # 4. Selection Mode - Two Fingers Up
+            if fingers[1] and fingers[2]:
+                xp, yp = 0, 0  # Reset points
+                swipe_start_x = None  # Reset swipe tracking when in selection mode
 
-        # 4. Selection Mode - Two Fingers Up
-        if fingers[1] and fingers[2]:
-            xp, yp = 0, 0  # Reset points
-            swipe_start_x = None  # Reset swipe tracking when in selection mode
+                # Detecting selection based on X coordinate
+                if y1 < 125:  # Ensure the selection is within the header area
+                    if 0 < x1 < 128:  # Save
+                        if len(overlayList) > 1:
+                            header = overlayList[1]
+                        save_canvas()
+                        show_guide = False
 
-            # Detecting selection based on X coordinate
-            if y1 < 125:  # Ensure the selection is within the header area
-                if 0 < x1 < 128:  # Save
-                    header = overlayList[1]
-                    save_canvas()
-                    show_guide = False
+                    elif 128 < x1 < 256:  # Pink
+                        if len(overlayList) > 2:
+                            header = overlayList[2]
+                        drawColor = (255, 0, 255)  # Pink
+                        show_transient_notification("Pink brush selected")
+                        show_guide = False
+                        keyboard_input.active = False  # Close keyboard input if open
 
-                elif 128 < x1 < 256:  # Pink
-                    header = overlayList[2]
-                    drawColor = (255, 0, 255)  # Pink
-                    show_transient_notification("Pink brush selected")
-                    show_guide = False
-                    keyboard_input.active = False  # Close keyboard input if open
+                    elif 256 < x1 < 384:  # Blue
+                        if len(overlayList) > 3:
+                            header = overlayList[3]
+                        drawColor = (255, 0, 0)  # Blue
+                        show_transient_notification("Blue brush selected")
+                        show_guide = False
+                        keyboard_input.active = False  # Close keyboard input if open
 
-                elif 256 < x1 < 384:  # Blue
-                    header = overlayList[3]
-                    drawColor = (255, 0, 0)  # Blue
-                    show_transient_notification("Blue brush selected")
-                    show_guide = False
-                    keyboard_input.active = False  # Close keyboard input if open
+                    elif 384 < x1 < 512:  # Green
+                        if len(overlayList) > 4:
+                            header = overlayList[4]
+                        drawColor = (0, 255, 0)  # Green
+                        show_transient_notification("Green brush selected")
+                        show_guide = False
+                        keyboard_input.active = False  # Close keyboard input if open
 
-                elif 384 < x1 < 512:  # Green
-                    header = overlayList[4]
-                    drawColor = (0, 255, 0)  # Green
-                    show_transient_notification("Green brush selected")
-                    show_guide = False
-                    keyboard_input.active = False  # Close keyboard input if open
+                    elif 512 < x1 < 640:  # Yellow
+                        if len(overlayList) > 5:
+                            header = overlayList[5]
+                        drawColor = (0, 255, 255)  # Yellow
+                        show_transient_notification("Yellow brush selected")
+                        show_guide = False
+                        keyboard_input.active = False  # Close keyboard input if open
 
-                elif 512 < x1 < 640:  # Yellow
-                    header = overlayList[5]
-                    drawColor = (0, 255, 255)  # Yellow
-                    show_transient_notification("Yellow brush selected")
-                    show_guide = False
-                    keyboard_input.active = False  # Close keyboard input if open
+                    elif 640 < x1 < 768:  # Eraser
+                        if len(overlayList) > 6:
+                            header = overlayList[6]
+                        drawColor = (0, 0, 0)  # Eraser
+                        show_transient_notification("Eraser selected")
+                        show_guide = False
+                        keyboard_input.active = False  # Close keyboard input if open
+                        # Delete selected text if any
+                        keyboard_input.delete_selected()
 
-                elif 640 < x1 < 768:  # Eraser
-                    header = overlayList[6]
-                    drawColor = (0, 0, 0)  # Eraser
-                    show_transient_notification("Eraser selected")
-                    show_guide = False
-                    keyboard_input.active = False  # Close keyboard input if open
-                    # Delete selected text if any
-                    keyboard_input.delete_selected()
+                    # Undo/Redo handling with global state
+                    elif 768 < x1 < 896:  # Undo
+                        if len(overlayList) > 7:
+                            header = overlayList[7]
+                        else:
+                            # Use a default header if index 7 doesn't exist
+                            header = overlayList[0] if overlayList else None
+                        if len(undoStack) > 0:
+                            redoStack.append(save_state())
+                            state = undoStack.pop()
+                            restore_state(state)
+                            show_transient_notification("Undo")
+                        else:
+                            show_transient_notification("Nothing to undo")
+                        show_guide = False
 
-                # Undo/Redo handling with global state
-                elif 768 < x1 < 896:  # Undo
-                    header = overlayList[7]
-                    if len(undoStack) > 0:
-                        redoStack.append(save_state())
-                        state = undoStack.pop()
-                        restore_state(state)
-                        show_transient_notification("Undo")
-                    else:
-                        show_transient_notification("Nothing to undo")
-                    show_guide = False
+                    elif 896 < x1 < 1024:  # Redo
+                        if len(overlayList) > 8:
+                            header = overlayList[8]
+                        if len(redoStack) > 0:
+                            undoStack.append(save_state())
+                            state = redoStack.pop()
+                            restore_state(state)
+                            show_transient_notification("Redo")
+                        else:
+                            show_transient_notification("Nothing to redo")
+                        show_guide = False
 
-                elif 896 < x1 < 1024:  # Redo
-                    header = overlayList[8]
-                    if len(redoStack) > 0:
-                        undoStack.append(save_state())
-                        state = redoStack.pop()
-                        restore_state(state)
-                        show_transient_notification("Redo")
-                    else:
-                        show_transient_notification("Nothing to redo")
-                    show_guide = False
+                    elif 1024 < x1 < 1152:  # Guide
+                        if len(overlayList) > 9:
+                            header = overlayList[9]
+                        show_transient_notification("Guide selected")
+                        # Toggle guide display
+                        show_guide = True  # Always show guide when selected
+                        if guideList:
+                            current_guide_index = 0  # Reset to first guide
+                            current_guide = guideList[current_guide_index]  # Show first guide image
+                        keyboard_input.active = False  # Close keyboard input if open
 
-                elif 1024 < x1 < 1152:  # Guide
-                    header = overlayList[9]
-                    show_transient_notification("Guide selected")
-                    # Toggle guide display
-                    show_guide = True  # Always show guide when selected
-                    current_guide_index = 0  # Reset to first guide
-                    current_guide = guideList[current_guide_index]  # Show first guide image
-                    keyboard_input.active = False  # Close keyboard input if open
+                    elif 1155 < x1 < 1280:
+                        if not keyboard_input.active:
+                            keyboard_input.active = True
+                            show_transient_notification("Keyboard Mode Opened")
+                        if len(overlayList) > 10:
+                            header = overlayList[10]
+                        show_guide = False
 
-                elif 1155 < x1 < 1280:
-                    if not keyboard_input.active:
-                        keyboard_input.active = True
-                        show_transient_notification("Keyboard Mode Opened")
-                    header = overlayList[10]
-                    show_guide = False
+                    # Brush/Eraser size controls
+                    elif 1155 < x1 < 1280 and y1 > 650:  # Bottom right area
+                        if x1 < 1200:  # Left side - decrease size
+                            if drawColor == (0, 0, 0):  # Eraser
+                                eraserSize = max(10, eraserSize - 5)
+                            else:  # Brush
+                                brushSize = max(1, brushSize - 1)
+                        else:  # Right side - increase size
+                            if drawColor == (0, 0, 0):  # Eraser
+                                eraserSize = min(200, eraserSize + 5)
+                            else:  # Brush
+                                brushSize = min(50, brushSize + 1)
+                        show_transient_notification(
+                            f"{'Eraser' if drawColor == (0, 0, 0) else 'Brush'} size: {eraserSize if drawColor == (0, 0, 0) else brushSize}")
 
-                # Brush/Eraser size controls
-                elif 1155 < x1 < 1280 and y1 > 650:  # Bottom right area
-                    if x1 < 1200:  # Left side - decrease size
-                        if drawColor == (0, 0, 0):  # Eraser
-                            eraserSize = max(10, eraserSize - 5)
-                        else:  # Brush
-                            brushSize = max(1, brushSize - 1)
-                    else:  # Right side - increase size
-                        if drawColor == (0, 0, 0):  # Eraser
-                            eraserSize = min(200, eraserSize + 5)
-                        else:  # Brush
-                            brushSize = min(50, brushSize + 1)
-                    show_transient_notification(
-                        f"{'Eraser' if drawColor == (0, 0, 0) else 'Brush'} size: {eraserSize if drawColor == (0, 0, 0) else brushSize}")
+                # Show selection rectangle
+                cv2.rectangle(img, (x1, y1 - 25), (x2, y2 + 25), drawColor, cv2.FILLED)
 
-            # Show selection rectangle
-            cv2.rectangle(img, (x1, y1 - 25), (x2, y2 + 25), drawColor, cv2.FILLED)
-
-    # ==================== HAND GESTURE LOGIC ====================
-        # GUIDE NAVIGATION MODE - One index finger, guide visible, keyboard not active
-        if fingers[1] and not fingers[2] and show_guide and not keyboard_input.active:
-            # Start or continue swipe gesture
-            if swipe_start_x is None:
-                swipe_start_x = x1
-                swipe_active = True
-            else:
-                delta_x = x1 - swipe_start_x
-                if abs(delta_x) > swipe_threshold and swipe_active:
-                    if delta_x > 0:
-                        # Swipe right - previous guide
-                        current_guide_index = max(0, current_guide_index - 1)
-                    else:
-                        # Swipe left - next guide
-                        current_guide_index = min(len(guideList) - 1, current_guide_index + 1)
-
-                    current_guide = guideList[current_guide_index]
-                    show_transient_notification(f"Guide {current_guide_index + 1}/{len(guideList)}")
-                    swipe_active = False  # avoid rapid multiple swipes
-
-            # Visual feedback
-            cv2.circle(img, (x1, y1), 15, (0, 255, 0), cv2.FILLED)
-
-        # DRAWING MODE - One index finger, guide hidden, keyboard not active
-        elif fingers[1] and not fingers[2] and not show_guide and not keyboard_input.active:
-            swipe_start_x = None  # cancel swipe tracking when drawing
-
-            # Eraser: Check for overlapping with existing text
-            if drawColor == (0, 0, 0):
-                for i, obj in enumerate(reversed(keyboard_input.text_objects)):
-                    idx = len(keyboard_input.text_objects) - 1 - i
-                    text_size = cv2.getTextSize(obj['text'], obj['font'], obj['scale'], obj['thickness'])[0]
-
-                    x_text, y_text = obj['position']
-                    if (x_text <= x1 <= x_text + text_size[0] and
-                            y_text - text_size[1] <= y1 <= y_text):
-                        del keyboard_input.text_objects[idx]
-                        break
-
-            # Visual feedback
-            cv2.circle(img, (x1, y1), 15, drawColor, cv2.FILLED)
-
-            if xp == 0 and yp == 0:
-                xp, yp = x1, y1
-
-            # Smooth drawing
-            points = interpolate_points(xp, yp, x1, y1)
-            for point in points:
-                if drawColor == (0, 0, 0):  # eraser
-                    cv2.line(img, (xp, yp), point, drawColor, eraserSize)
-                    cv2.line(imgCanvas, (xp, yp), point, drawColor, eraserSize)
+        # ==================== HAND GESTURE LOGIC ====================
+            # GUIDE NAVIGATION MODE - One index finger, guide visible, keyboard not active
+            if fingers[1] and not fingers[2] and show_guide and not keyboard_input.active:
+                # Start or continue swipe gesture
+                if swipe_start_x is None:
+                    swipe_start_x = x1
+                    swipe_active = True
                 else:
-                    cv2.line(img, (xp, yp), point, drawColor, brushSize)
-                    cv2.line(imgCanvas, (xp, yp), point, drawColor, brushSize)
-                xp, yp = point
+                    delta_x = x1 - swipe_start_x
+                    if abs(delta_x) > swipe_threshold and swipe_active:
+                        if delta_x > 0:
+                            # Swipe right - previous guide
+                            current_guide_index = max(0, current_guide_index - 1)
+                        else:
+                            # Swipe left - next guide
+                            current_guide_index = min(len(guideList) - 1, current_guide_index + 1)
 
-            # Update undo/redo stacks
-            undoStack.append(save_state())
-            redoStack.clear()
+                        current_guide = guideList[current_guide_index]
+                        show_transient_notification(f"Guide {current_guide_index + 1}/{len(guideList)}")
+                        swipe_active = False  # avoid rapid multiple swipes
 
-        # TEXT DRAGGING MODE - Two fingers, keyboard active
-        elif keyboard_input.active and fingers[1] and fingers[2]:
-            center_x = (x1 + x2) // 2
-            center_y = (y1 + y2) // 2
+                # Visual feedback
+                cv2.circle(img, (x1, y1), 15, (0, 255, 0), cv2.FILLED)
 
-            if not keyboard_input.dragging:
-                if keyboard_input.text or keyboard_input.cursor_visible:
-                    keyboard_input.check_drag_start(center_x, center_y)
+            # DRAWING MODE - One index finger, guide hidden, keyboard not active
+            elif fingers[1] and not fingers[2] and not show_guide and not keyboard_input.active:
+                swipe_start_x = None  # cancel swipe tracking when drawing
+
+                # Eraser: Check for overlapping with existing text
+                if drawColor == (0, 0, 0):
+                    for i, obj in enumerate(reversed(keyboard_input.text_objects)):
+                        idx = len(keyboard_input.text_objects) - 1 - i
+                        text_size = cv2.getTextSize(obj['text'], obj['font'], obj['scale'], obj['thickness'])[0]
+
+                        x_text, y_text = obj['position']
+                        if (x_text <= x1 <= x_text + text_size[0] and
+                                y_text - text_size[1] <= y1 <= y_text):
+                            del keyboard_input.text_objects[idx]
+                            break
+
+                # Visual feedback
+                cv2.circle(img, (x1, y1), 15, drawColor, cv2.FILLED)
+
+                if xp == 0 and yp == 0:
+                    xp, yp = x1, y1
+
+                # Smooth drawing
+                points = interpolate_points(xp, yp, x1, y1)
+                for point in points:
+                    if drawColor == (0, 0, 0):  # eraser
+                        cv2.line(img, (xp, yp), point, drawColor, eraserSize)
+                        cv2.line(imgCanvas, (xp, yp), point, drawColor, eraserSize)
+                    else:
+                        cv2.line(img, (xp, yp), point, drawColor, brushSize)
+                        cv2.line(imgCanvas, (xp, yp), point, drawColor, brushSize)
+                    xp, yp = point
+
+                # Update undo/redo stacks
+                undoStack.append(save_state())
+                redoStack.clear()
+
+            # TEXT DRAGGING MODE - Two fingers, keyboard active
+            elif keyboard_input.active and fingers[1] and fingers[2]:
+                center_x = (x1 + x2) // 2
+                center_y = (y1 + y2) // 2
+
+                if not keyboard_input.dragging:
+                    if keyboard_input.text or keyboard_input.cursor_visible:
+                        keyboard_input.check_drag_start(center_x, center_y)
+                else:
+                    keyboard_input.update_drag(center_x, center_y)
+
+                # Visual feedback
+                cv2.circle(img, (center_x, center_y), 15, (0, 255, 255), cv2.FILLED)
+
             else:
-                keyboard_input.update_drag(center_x, center_y)
-
-            # Visual feedback
-            cv2.circle(img, (center_x, center_y), 15, (0, 255, 255), cv2.FILLED)
+                # Reset states when fingers not up or mode not active
+                xp, yp = 0, 0
+                swipe_start_x = None
+                swipe_active = False
+                if keyboard_input.dragging:
+                    keyboard_input.end_drag()
 
         else:
-            # Reset states when fingers not up or mode not active
+            # No hand detected: reset everything
             xp, yp = 0, 0
             swipe_start_x = None
             swipe_active = False
             if keyboard_input.dragging:
                 keyboard_input.end_drag()
 
-    else:
-        # No hand detected: reset everything
-        swipe_start_x = None
-        swipe_active = False
-        if keyboard_input.dragging:
-            keyboard_input.end_drag()
+        # Handle keyboard input
+        current_time = time.time()
+        dt = current_time - last_time
+        last_time = current_time
+        keyboard_input.update(dt)
 
-    # Handle keyboard input
-    current_time = time.time()
-    dt = current_time - last_time
-    last_time = current_time
-    keyboard_input.update(dt)
+        # Check for keyboard input
+        try:
+            key = cv2.waitKey(1) & 0xFF
+            if keyboard_input.process_key_input(key):
+                # When text is confirmed or changed, save state
+                undoStack.append(save_state())
+                redoStack.clear()
+        except KeyboardInterrupt:
+            print("Program terminated by user")
+            break
 
-    # Check for keyboard input
-    key = cv2.waitKey(1) & 0xFF
-    if keyboard_input.process_key_input(key):
-        # When text is confirmed or changed, save state
-        undoStack.append(save_state())
-        redoStack.clear()
+        # 8. Convert Canvas to Grayscale and Invert
+        imgGray = cv2.cvtColor(imgCanvas, cv2.COLOR_BGR2GRAY)
+        _, imgInv = cv2.threshold(imgGray, 50, 255, cv2.THRESH_BINARY_INV)
+        imgInv = cv2.cvtColor(imgInv, cv2.COLOR_GRAY2BGR)
+        img = cv2.bitwise_and(img, imgInv)
+        img = cv2.bitwise_or(img, imgCanvas)
 
-    # 8. Convert Canvas to Grayscale and Invert
-    imgGray = cv2.cvtColor(imgCanvas, cv2.COLOR_BGR2GRAY)
-    _, imgInv = cv2.threshold(imgGray, 50, 255, cv2.THRESH_BINARY_INV)
-    imgInv = cv2.cvtColor(imgInv, cv2.COLOR_GRAY2BGR)
-    img = cv2.bitwise_and(img, imgInv)
-    img = cv2.bitwise_or(img, imgCanvas)
+        # 9. Set Header Image
+        if header is not None:
+            img[0:125, 0:1280] = header
 
-    # 9. Set Header Image
-    img[0:125, 0:1280] = header
+        # 10. Draw keyboard text and placeholder
+        if keyboard_input.active:
+            # Draw semi-transparent typing area background
+            typing_area = np.zeros((100, 1280, 3), dtype=np.uint8)
+            typing_area[:] = (50, 50, 50)  # Dark gray background
+            img[620:720, 0:1280] = cv2.addWeighted(img[620:720, 0:1280], 0.7, typing_area, 0.3, 0)
 
-    # 10. Draw keyboard text and placeholder
-    if keyboard_input.active:
-        # Draw semi-transparent typing area background
-        typing_area = np.zeros((100, 1280, 3), dtype=np.uint8)
-        typing_area[:] = (50, 50, 50)  # Dark gray background
-        img[620:720, 0:1280] = cv2.addWeighted(img[620:720, 0:1280], 0.7, typing_area, 0.3, 0)
+            keyboard_input.draw(img)
 
-        keyboard_input.draw(img)
+            # Draw instruction text
+            instruction_text = "Press Enter to confirm text, ESC to cancel"
+            cv2.putText(img, instruction_text, (20, 700),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        else:
+            # Draw existing text objects even when keyboard is inactive
+            keyboard_input.draw(img)
 
-        # Draw instruction text
-        instruction_text = "Press Enter to confirm text, ESC to cancel"
-        cv2.putText(img, instruction_text, (20, 700),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
-    else:
-        # Draw existing text objects even when keyboard is inactive
-        keyboard_input.draw(img)
+        # 11. Display Guide Image if active
+        if show_guide and current_guide is not None:
+            # Create a composite image that preserves the drawing canvas
+            guide_area = img[125:720, 0:1280].copy()
+            # Blend the guide with the current camera feed (50% opacity)
+            blended_guide = cv2.addWeighted(current_guide, 0.3, guide_area, 0.3, 0)
+            # Put the blended guide back
+            img[125:720, 0:1280] = blended_guide
 
-    # 11. Display Guide Image if active
-    if show_guide and current_guide is not None:
-        # Create a composite image that preserves the drawing canvas
-        guide_area = img[125:720, 0:1280].copy()
-        # Blend the guide with the current camera feed (50% opacity)
-        blended_guide = cv2.addWeighted(current_guide, 0.3, guide_area, 0.3, 0)
-        # Put the blended guide back
-        img[125:720, 0:1280] = blended_guide
+            # Display guide navigation instructions
+            cv2.putText(img, "", (50, 150),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+            cv2.putText(img, f"Guide {current_guide_index + 1}/{len(guideList)}", (1100, 150),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
 
-        # Display guide navigation instructions
-        cv2.putText(img, "", (50, 150),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
-        cv2.putText(img, f"Guide {current_guide_index + 1}/{len(guideList)}", (1100, 150),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 255), 2)
+        # 12. Display the image
+        cv2.namedWindow("Beyond The Brush", cv2.WINDOW_GUI_NORMAL)  # Create window with normal GUI (not resizable)
+        cv2.resizeWindow("Beyond The Brush", 1280, 720)  # Set window size to 1280x720
+        cv2.imshow("Beyond The Brush", img)
 
-    # 12. Display the image
-    cv2.namedWindow("Beyond The Brush", cv2.WINDOW_GUI_NORMAL)  # Create window with normal GUI (not resizable)
-    cv2.resizeWindow("Beyond The Brush", 1280, 720)  # Set window size to 1280x720
-    cv2.imshow("Beyond The Brush", img)
+        # Maintain 60 FPS
+        elapsed_time = time.time() - start_time
+        if elapsed_time < time_per_frame:
+            time.sleep(time_per_frame - elapsed_time)
 
-    # Maintain 60 FPS
-    elapsed_time = time.time() - start_time
-    if elapsed_time < time_per_frame:
-        time.sleep(time_per_frame - elapsed_time)
+        # Process Tkinter events
+        root.update()
 
-    # Process Tkinter events
-    root.update()
-
-    # Exit condition
-    if cv2.waitKey(1) & 0xFF == ord('q'):
-        break
-
-# Release resources
-cap.release()
-cv2.destroyAllWindows()
+        # Exit condition
+        if cv2.waitKey(1) & 0xFF == ord('q'):
+            break
+except KeyboardInterrupt:
+    print("Program terminated by user")
+finally:
+    # Release resources
+    cap.release()
+    cv2.destroyAllWindows()
