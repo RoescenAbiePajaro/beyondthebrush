@@ -9,6 +9,7 @@ from PIL import Image, ImageTk
 from KeyboardInput import KeyboardInput
 import tkinter as tk
 from tkinter import messagebox
+import sys
 
 # Create a hidden tkinter window for the icon
 root = Tk()
@@ -38,29 +39,37 @@ current_guide_index = 0
 current_guide = None
 show_guide = False
 
+# Get the base path for resources
+if getattr(sys, 'frozen', False):
+    # Running as compiled executable
+    basePath = sys._MEIPASS
+else:
+    # Running as normal Python script
+    basePath = os.path.dirname(os.path.abspath(__file__))
+
 # Load header images
-folderPath = 'header'
+folderPath = os.path.join(basePath, 'header')
 if os.path.exists(folderPath) and os.path.isdir(folderPath):
     try:
         myList = sorted(os.listdir(folderPath))
-        overlayList = [cv2.imread(f"{folderPath}/{imPath}") for imPath in myList]
+        overlayList = [cv2.imread(os.path.join(folderPath, imPath)) for imPath in myList]
         # Remove any failed loads
         overlayList = [img for img in overlayList if img is not None]
 
         if overlayList:
             header = overlayList[0]
         else:
-            print("Warning: No valid header images found")
+            print(f"Warning: No valid header images found in {folderPath}")
     except Exception as e:
-        print(f"Error loading header images: {e}")
+        print(f"Error loading header images from {folderPath}: {e}")
 
 # Load guide images
-folderPath = 'guide'
+folderPath = os.path.join(basePath, 'guide')
 if os.path.exists(folderPath) and os.path.isdir(folderPath):
     try:
         myList = sorted(os.listdir(folderPath))
         for imPath in myList:
-            img = cv2.imread(f"{folderPath}/{imPath}")
+            img = cv2.imread(os.path.join(folderPath, imPath))
             if img is not None:
                 try:
                     # Resize guide images to fit below header (1280x595)
@@ -364,7 +373,7 @@ try:
                     swipe_active = True
                 else:
                     delta_x = x1 - swipe_start_x
-                    if abs(delta_x) > swipe_threshold and swipe_active:
+                    if abs(delta_x) > swipe_threshold and swipe_active and guideList:
                         if delta_x > 0:
                             # Swipe right - previous guide
                             current_guide_index = max(0, current_guide_index - 1)
@@ -372,8 +381,9 @@ try:
                             # Swipe left - next guide
                             current_guide_index = min(len(guideList) - 1, current_guide_index + 1)
 
-                        current_guide = guideList[current_guide_index]
-                        show_transient_notification(f"Guide {current_guide_index + 1}/{len(guideList)}")
+                        if 0 <= current_guide_index < len(guideList):
+                            current_guide = guideList[current_guide_index]
+                            show_transient_notification(f"Guide {current_guide_index + 1}/{len(guideList)}")
                         swipe_active = False  # avoid rapid multiple swipes
 
                 # Visual feedback
@@ -520,7 +530,7 @@ try:
         root.update()
 
         # Exit condition
-        if cv2.waitKey(1) & 0xFF == ord('q'):
+        if cv2.waitKey(1) & 0xFF == 27:  # ESC key for immediate exit
             break
 except KeyboardInterrupt:
     print("Program terminated by user")
