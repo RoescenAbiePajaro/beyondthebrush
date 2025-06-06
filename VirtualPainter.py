@@ -18,10 +18,23 @@ root.withdraw()  # Hide the main tkinter window
 
 # Set the taskbar icon
 try:
-    img = PhotoImage(file='C:\\Users\\s\\PycharmProjects\\btb\\icon\\icons.png')
-    root.iconphoto(False, img)
+    # For Windows, use the .ico file directly with wm_iconbitmap
+    if sys.platform == "win32":
+        root.wm_iconbitmap("icon/app.ico")
+    else:
+        # For other platforms, use a PNG with PhotoImage
+        icon_img = PhotoImage(file="icon/app.ico")
+        root.iconphoto(True, icon_img)
 except Exception as e:
     print(f"Could not set icon: {e}")
+    # Fallback: try to load icon using PIL which has better format support
+    try:
+        from PIL import Image, ImageTk
+        icon = Image.open("icon/app.ico")
+        icon_photo = ImageTk.PhotoImage(icon)
+        root.iconphoto(True, icon_photo)
+    except Exception as e2:
+        print(f"Fallback icon loading also failed: {e2}")
 
 # Variables
 brushSize = 10
@@ -130,49 +143,11 @@ def restore_state(state):
     keyboard_input.text_objects = state['text_objects'].copy()
 
 # Function to show transient notification
-def show_transient_notification(message, duration=1000, is_error=False):
-    notification = Toplevel(root)
-    notification.wm_overrideredirect(True)
-
-    # Calculate position to be centered on screen (not just drawing area)
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
-
-    # Notification will be 250px wide and auto-height
-    notif_width = 250
-    notification.wm_geometry(f"+{(screen_width - notif_width) // 2}+{(screen_height - 100) // 2}")
-
-    # Style based on message type
-    bg_color = 'lightyellow'
-    if is_error:
-        bg_color = '#ffdddd'  # light red for errors
-    elif "selected" in message.lower():
-        bg_color = '#ddffdd'  # light green for selections
-
-    # Create frame for better centering control
-    frame = Frame(notification, bg=bg_color, padx=10, pady=10)
-    frame.pack(expand=True, fill=BOTH)
-
-    # Create notification label with improved centering
-    label = Label(
-        frame,
-        text=message,
-        font=('Helvetica', 12, 'bold'),
-        bg=bg_color,
-        fg='#333333',
-        padx=10,
-        pady=10,
-        wraplength=notif_width - 40,  # Account for padding
-        justify=CENTER,
-        anchor=CENTER  # This ensures text is centered within the label
-    )
-    label.pack(expand=True, fill=BOTH)
-
-    # Add a subtle border
-    notification.config(bd=1, relief='solid')
-
-    # Auto-destroy after duration
-    notification.after(duration, notification.destroy)
+def show_transient_notification(message, duration=1.0):
+    """Show a temporary notification message on screen"""
+    global notification_text, notification_time
+    notification_text = message
+    notification_time = time.time() + duration
 
 # Function to save the canvas
 def save_canvas():
@@ -632,3 +607,19 @@ finally:
     # Release resources
     cap.release()
     cv2.destroyAllWindows()
+
+def run_application(role=None):
+    # Any role-specific initialization can go here
+    try:
+        # Main application code is already in the global scope
+        # This function just provides an entry point
+        pass
+    except Exception as e:
+        print(f"Error running application: {e}")
+
+# Only run the main code when executed directly
+if __name__ == "__main__":
+    role = None
+    if len(sys.argv) > 1:
+        role = sys.argv[1]
+    run_application(role)
